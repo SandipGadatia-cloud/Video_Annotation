@@ -1,0 +1,21 @@
+# Core Dependencies
+streamlit>=1.28.0
+opencv-python>=4.8.0
+pillow>=10.0.0
+numpy>=1.24.0
+
+# AI/ML Dependencies
+segment-anything>=1.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# LangChain & Gemini
+langchain>=0.1.0
+langchain-google-genai>=0.0.6
+langgraph>=0.0.20
+
+# Utilities
+python-dotenv>=1.0.0
+
+# Optional: For better video codec support
+imageio-ffmpeg>=0.4.9
