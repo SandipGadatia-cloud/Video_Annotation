@@ -56,7 +56,6 @@ class AgentState(TypedDict):
     current_frame: int
     final_annotation: str
     object_relationships: str  # NEW: Store relationships between objects
-    ontology: dict  # NEW: Store generated ontology
     human_feedback: str
 
 
@@ -83,7 +82,7 @@ sam_predictor = load_sam()
 
 
 # ===================== VIDEO HELPERS =====================
-def extract_key_frames(video_path: str, num_frames: int = 4):
+def extract_key_frames(video_path: str, num_frames: int = 5):
     """
     Extract key frames from video at regular intervals
     Returns: list of (frame_number, frame_array, timestamp)
@@ -293,387 +292,6 @@ def analyze_object_relationships(frame: np.ndarray, detections: List[DetectedObj
         return []
 
 
-# ===================== NEW: KNOWLEDGE GRAPH VISUALIZATION =====================
-def create_knowledge_graph_html(ontology: dict) -> str:
-    """
-    Create an interactive knowledge graph visualization using vis.js
-    Returns HTML string with embedded visualization
-    """
-    if not ontology or not ontology.get("ontology", {}).get("classes"):
-        return None
-    
-    classes = ontology["ontology"]["classes"]
-    
-    # Build nodes and edges
-    nodes = []
-    edges = []
-    
-    # Color mapping for categories
-    category_colors = {
-        "Human": "#FF6B6B",
-        "Animal": "#4ECDC4",
-        "Vehicle": "#45B7D1",
-        "Furniture": "#96CEB4",
-        "Clothing": "#FFEAA7",
-        "SportsEquipment": "#DFE6E9",
-        "ElectronicDevice": "#74B9FF",
-        "Structure": "#A29BFE",
-        "NaturalObject": "#55EFC4",
-        "Tool": "#FDA7DF",
-        "Food": "#FFD93D",
-        "Other": "#B2BEC3"
-    }
-    
-    for cls in classes:
-        node_id = cls["name"]
-        category = cls.get("category", "Other")
-        color = category_colors.get(category, "#95A5A6")
-        
-        # Create node
-        nodes.append({
-            "id": node_id,
-            "label": node_id,
-            "title": f"Category: {category}",
-            "color": color,
-            "shape": "box",
-            "font": {"size": 14, "color": "#2C3E50"}
-        })
-        
-        # Create edges from relationships
-        relationships = cls.get("relationships", [])
-        for rel in relationships:
-            rel_type = rel.get("type", "related")
-            target = rel.get("target", "")
-            
-            if target:
-                edges.append({
-                    "from": node_id,
-                    "to": target,
-                    "label": rel_type,
-                    "arrows": "to",
-                    "font": {"size": 10, "align": "middle"},
-                    "color": {"color": "#7F8C8D"}
-                })
-    
-    # Convert to JSON
-    nodes_json = json.dumps(nodes)
-    edges_json = json.dumps(edges)
-    
-    # Create HTML with vis.js
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-        <style type="text/css">
-            * {{
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }}
-            html, body {{
-                width: 100%;
-                height: 100%;
-                overflow: hidden;
-            }}
-            #mynetwork {{
-                width: 100%;
-                height: 700px;
-                border: 1px solid #E0E0E0;
-                background-color: #FAFAFA;
-                border-radius: 8px;
-            }}
-            body {{
-                font-family: Arial, sans-serif;
-                padding: 10px;
-            }}
-            .legend {{
-                margin-top: 15px;
-                padding: 15px;
-                background: white;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }}
-            .legend-item {{
-                display: inline-block;
-                margin-right: 20px;
-                margin-bottom: 8px;
-            }}
-            .legend-color {{
-                display: inline-block;
-                width: 20px;
-                height: 20px;
-                margin-right: 5px;
-                border-radius: 3px;
-                vertical-align: middle;
-            }}
-            .info {{
-                background: #E3F2FD;
-                padding: 12px;
-                border-radius: 6px;
-                margin-bottom: 15px;
-                border-left: 4px solid #2196F3;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="info">
-            <strong>Interactive Knowledge Graph</strong> - 
-            Click and drag nodes to rearrange • 
-            Scroll to zoom • 
-            Click nodes to highlight connections
-        </div>
-        <div id="mynetwork"></div>
-        <div class="legend">
-            <strong>Legend:</strong><br><br>
-            <div class="legend-item">
-                <span class="legend-color" style="background-color: #FF6B6B;"></span>
-                <span>Human</span>
-            </div>
-            <div class="legend-item">
-                <span class="legend-color" style="background-color: #FFEAA7;"></span>
-                <span>Clothing</span>
-            </div>
-            <div class="legend-item">
-                <span class="legend-color" style="background-color: #74B9FF;"></span>
-                <span>Electronic</span>
-            </div>
-            <div class="legend-item">
-                <span class="legend-color" style="background-color: #4ECDC4;"></span>
-                <span>Animal</span>
-            </div>
-            <div class="legend-item">
-                <span class="legend-color" style="background-color: #96CEB4;"></span>
-                <span>Furniture</span>
-            </div>
-            <div class="legend-item">
-                <span class="legend-color" style="background-color: #DFE6E9;"></span>
-                <span>Sports</span>
-            </div>
-            <div class="legend-item">
-                <span class="legend-color" style="background-color: #B2BEC3;"></span>
-                <span>Other</span>
-            </div>
-        </div>
-        
-        <script type="text/javascript">
-            // Create nodes and edges
-            var nodes = new vis.DataSet({nodes_json});
-            var edges = new vis.DataSet({edges_json});
-            
-            // Create a network
-            var container = document.getElementById('mynetwork');
-            var data = {{
-                nodes: nodes,
-                edges: edges
-            }};
-            
-            var options = {{
-                nodes: {{
-                    borderWidth: 2,
-                    borderWidthSelected: 3,
-                    shadow: true,
-                    font: {{
-                        size: 14,
-                        color: '#2C3E50'
-                    }}
-                }},
-                edges: {{
-                    width: 2,
-                    shadow: true,
-                    smooth: {{
-                        type: 'cubicBezier',
-                        forceDirection: 'horizontal',
-                        roundness: 0.4
-                    }}
-                }},
-                physics: {{
-                    enabled: true,
-                    barnesHut: {{
-                        gravitationalConstant: -2000,
-                        centralGravity: 0.3,
-                        springLength: 150,
-                        springConstant: 0.04,
-                        damping: 0.09,
-                        avoidOverlap: 0.5
-                    }},
-                    stabilization: {{
-                        iterations: 200
-                    }}
-                }},
-                interaction: {{
-                    hover: true,
-                    tooltipDelay: 200,
-                    navigationButtons: true,
-                    keyboard: true
-                }}
-            }};
-            
-            var network = new vis.Network(container, data, options);
-            
-            // Highlight connected nodes on click
-            network.on("click", function(params) {{
-                if (params.nodes.length > 0) {{
-                    var nodeId = params.nodes[0];
-                    var connectedNodes = network.getConnectedNodes(nodeId);
-                    var connectedEdges = network.getConnectedEdges(nodeId);
-                    
-                    // Highlight logic
-                    var allNodes = nodes.get({{returnType: "Object"}});
-                    var updateArray = [];
-                    
-                    for (var nodeKey in allNodes) {{
-                        if (allNodes.hasOwnProperty(nodeKey)) {{
-                            var node = allNodes[nodeKey];
-                            if (connectedNodes.indexOf(node.id) !== -1 || node.id === nodeId) {{
-                                node.opacity = 1;
-                            }} else {{
-                                node.opacity = 0.3;
-                            }}
-                            updateArray.push(node);
-                        }}
-                    }}
-                    nodes.update(updateArray);
-                }}
-            }});
-            
-            // Reset on background click
-            network.on("deselectNode", function(params) {{
-                var allNodes = nodes.get({{returnType: "Object"}});
-                var updateArray = [];
-                
-                for (var nodeKey in allNodes) {{
-                    if (allNodes.hasOwnProperty(nodeKey)) {{
-                        allNodes[nodeKey].opacity = 1;
-                        updateArray.push(allNodes[nodeKey]);
-                    }}
-                }}
-                nodes.update(updateArray);
-            }});
-        </script>
-    </body>
-    </html>
-    """
-    
-    return html
-
-
-# ===================== NEW: ONTOLOGY GENERATION =====================
-def generate_ontology(all_labels: set, relationships_text: str) -> dict:
-    """
-    Generate a structured ontology from detected objects and relationships
-    """
-    if not all_labels:
-        return {"ontology": {"classes": []}}
-    
-    object_list = ", ".join(sorted(all_labels))
-    relationship_list = relationships_text if relationships_text else "No relationships detected"
-    
-    prompt_text = f"""You are a knowledge graph construction system.
-Your task is to generate a structured ontology strictly based on the provided detected objects and relationships.
-
-CRITICAL RULES:
-1. DO NOT invent new objects.
-2. DO NOT add entities that are not in the detected object list.
-3. DO NOT modify object names.
-4. DO NOT hallucinate relationships.
-5. Use ONLY the provided objects and relationships.
-6. If information is insufficient, leave fields empty.
-7. Output ONLY valid JSON. No explanations. No markdown.
-
-INPUT:
-Detected Objects:
-{object_list}
-
-Detected Relationships:
-{relationship_list}
-
-REQUIRED OUTPUT FORMAT:
-{{
-  "ontology": {{
-    "classes": [
-      {{
-        "name": "ObjectLabel",
-        "category": "HighLevelCategory",
-        "parent_class": "OptionalParentClassOrNull",
-        "attributes": [],
-        "relationships": [
-          {{
-            "type": "relationship_type",
-            "target": "TargetObjectLabel"
-          }}
-        ]
-      }}
-    ]
-  }}
-}}
-
-GUIDELINES:
-1. "category" should be a general semantic category like:
-   - Human
-   - Animal
-   - Vehicle
-   - Furniture
-   - Clothing
-   - SportsEquipment
-   - ElectronicDevice
-   - Structure
-   - NaturalObject
-   - Tool
-   - Food
-   - Other
-
-2. parent_class should only be used if logically valid.
-   Example:
-   - person → Human
-   - jacket → Clothing
-   - ball → SportsEquipment
-
-3. relationships must be extracted from provided relationship strings.
-   Example:
-   - "person holding phone" → type: "holding", target: "phone"
-
-4. If no relationships exist for an object, use:
-   "relationships": []
-
-5. If no attributes are explicitly known, use:
-   "attributes": []
-
-6. Keep naming consistent with detected labels.
-
-Return strictly JSON only."""
-
-    try:
-        response = model.invoke([HumanMessage(content=prompt_text)])
-        raw = response.content
-        
-        # Try to extract JSON
-        raw = raw.strip()
-        
-        # Remove markdown code blocks if present
-        if raw.startswith("```"):
-            lines = raw.split("\n")
-            raw = "\n".join(lines[1:-1]) if len(lines) > 2 else raw
-        
-        raw = raw.strip().strip("```").strip()
-        
-        # Find JSON object
-        start_idx = raw.find("{")
-        end_idx = raw.rfind("}")
-        
-        if start_idx != -1 and end_idx != -1:
-            json_str = raw[start_idx:end_idx + 1]
-            ontology = json.loads(json_str)
-            return ontology
-        else:
-            st.warning("Could not extract valid JSON from ontology response")
-            return {"ontology": {"classes": []}}
-            
-    except Exception as e:
-        st.warning(f"Failed to generate ontology: {e}")
-        return {"ontology": {"classes": []}}
-
-
 # ===================== AGENT NODE =====================
 def detect_objects_in_frame(frame: np.ndarray, feedback: str = "") -> List[DetectedObject]:
     """Detect objects in a single frame using Gemini"""
@@ -727,7 +345,7 @@ def detect_objects(state: AgentState) -> AgentState:
     feedback = state.get("human_feedback", "").strip()
     
     # Extract key frames for analysis
-    key_frames, total_frames, fps = extract_key_frames(video_path, num_frames=4)
+    key_frames, total_frames, fps = extract_key_frames(video_path, num_frames=5)
     
     frame_detections = {}
     all_labels = set()
@@ -760,19 +378,13 @@ def detect_objects(state: AgentState) -> AgentState:
     # Format relationships for display
     relationships_text = "\n".join([f"• {rel}" for rel in sorted(all_relationships)]) if all_relationships else "No relationships detected"
     
-    # Generate ontology from detected objects and relationships
-    status_text.text("🔄 Generating ontology...")
-    ontology = generate_ontology(all_labels, relationships_text)
-    status_text.text("✅ Analysis complete with ontology!")
-    
     return {
         "frame_detections": frame_detections,
         "total_frames": total_frames,
         "fps": fps,
         "current_frame": list(frame_detections.keys())[0] if frame_detections else 0,
         "final_annotation": ", ".join(sorted(all_labels)),
-        "object_relationships": relationships_text,  # Add relationships
-        "ontology": ontology  # NEW: Add ontology
+        "object_relationships": relationships_text  # NEW: Add relationships
     }
 
 
@@ -853,8 +465,7 @@ with col_flow:
                 "fps": 0.0,
                 "current_frame": 0,
                 "final_annotation": "",
-                "object_relationships": "",  # Initialize relationships
-                "ontology": {},  # NEW: Initialize ontology
+                "object_relationships": "",  # NEW: Initialize relationships
                 "human_feedback": ""
             })
             st.rerun()
@@ -975,44 +586,6 @@ with col_flow:
         else:
             st.info("No relationships detected between objects")
         
-        # ===================== NEW: DISPLAY ONTOLOGY =====================
-        st.markdown("---")
-        st.markdown("### 🧠 Generated Ontology (Knowledge Graph)")
-        
-        if state.get("ontology") and state["ontology"].get("ontology", {}).get("classes"):
-            # Create tabs for different views
-            tab1, tab2 = st.tabs(["📊 Visual Graph", "📄 JSON Data"])
-            
-            with tab1:
-                # Generate and display interactive knowledge graph
-                st.markdown("#### Interactive Knowledge Graph Visualization")
-                graph_html = create_knowledge_graph_html(state["ontology"])
-                
-                if graph_html:
-                    # Display the interactive graph with increased height and width
-                    st.components.v1.html(graph_html, height=850, scrolling=True)
-                else:
-                    st.warning("Could not generate graph visualization")
-            
-            with tab2:
-                # Display as formatted JSON
-                ontology_json = json.dumps(state["ontology"], indent=2)
-                st.code(ontology_json, language="json")
-                
-                # Optional: Display summary
-                num_classes = len(state["ontology"]["ontology"]["classes"])
-                st.caption(f"Generated {num_classes} ontology classes from detected objects")
-            
-            # Add download button (visible in both tabs)
-            st.download_button(
-                label="📥 Download Ontology JSON",
-                data=ontology_json,
-                file_name="video_ontology.json",
-                mime="application/json"
-            )
-        else:
-            st.info("Ontology generation in progress or no objects detected")
-        
         # ===================== HITL: Human Feedback (POPUP) =====================
         st.markdown("---")
         
@@ -1054,8 +627,7 @@ if st.session_state.get("show_feedback_dialog", False):
                 "fps": 0.0,
                 "current_frame": 0,
                 "final_annotation": "",
-                "object_relationships": "",  # Reset relationships
-                "ontology": {},  # NEW: Reset ontology
+                "object_relationships": "",  # NEW: Reset relationships
                 "human_feedback": feedback_text
             })
 
